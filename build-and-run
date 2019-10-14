@@ -1,0 +1,8 @@
+#!/bin/bash
+
+set -e
+
+image=python-reverb-scrape
+
+docker build --tag=$image .
+docker run -v `pwd`/data:/data $image
