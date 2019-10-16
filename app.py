@@ -9,6 +9,9 @@ import pprint
 import re
 import os
 
+def slugs():
+    return sorted(os.listdir("/data"))
+
 def proc_item(item_div):
     price_str = item_div.select(".price-with-shipping__price__amount")[0].text
     shipping_str = item_div.select(".price-with-shipping__shipping")[0].text
@@ -37,7 +40,7 @@ def page_items(url):
 
 base_url = "https://reverb.com"
 
-def slug_dataset(slug):
+def scrape_slug(slug):
     path = f"/data/{slug}"
     os.makedirs(path, exist_ok=True)
     [items, next_url] = page_items(base_url + f"/p/{slug}/used")
@@ -48,16 +51,39 @@ def slug_dataset(slug):
     t = time.strftime("%Y-%m-%dT%H_%M_%S")
     data.to_csv(f"/data/{slug}/{t}.tsv", sep="\t", index=False)
 
-slug_dataset("boss-dd-500-digital-delay")
-slug_dataset("soundcraft-notepad-12fx-small-format-12-input-mixing-console")
-slug_dataset("elektron-digitone")
-slug_dataset("roland-boutique-series-sh-01a")
+# scrape_slug("boss-dd-500-digital-delay")
+# scrape_slug("soundcraft-notepad-12fx-small-format-12-input-mixing-console")
+# scrape_slug("elektron-digitone")
+# scrape_slug("roland-boutique-series-sh-01a")
 
-# data2 = pd.read_csv("/data/data.tsv", sep="\t")
-# pprint.pprint(data2.sort_values("total_price").to_dict("records"))
+def slug_best_deals_by_condition(slug):
+    path = f"/data/{slug}"
+    dfs = [pd.read_csv(path + "/" + fname, sep="\t") for fname in os.listdir(path)]
+    groups = pd.concat(dfs).drop_duplicates(["url", "total_price"]).groupby("condition")
+    col = "total_price"
+    for condition, group_df in groups:
+        df = group_df.copy()
+        df["total_price_z_score"] = (df[col] - df[col].mean())/df[col].std(ddof=0)
+        print(condition)
+        pprint.pprint(df.sort_values("total_price_z_score").to_dict("records")[0])
+        print("")
+
+for slug in slugs():
+    print("========================================")
+    print(slug)
+    print("========================================")
+    slug_best_deals_by_condition(slug)
+
+# TODO: HH - The next step is integrating scraping and deal calculation so that
+# we only consider deals from the most recent scrape (if an offer isn't
+# available anymore we still want to use its price to know how good current
+# deals are, but we don't want it to be considered a winner, since it's not
+# available anymore)
 
 ################################################################################
 ## Other thoughts...
+
+# pprint.pprint(data.sort_values("total_price").to_dict("records"))
 
 # x =  "{ "name":"John", "age":30, "city":"New York"}"
 # y = json.loads(x)
