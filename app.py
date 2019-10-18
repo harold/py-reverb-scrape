@@ -40,45 +40,55 @@ def page_items(url):
 
 base_url = "https://reverb.com"
 
+file_time_format = "%Y-%m-%dT%H_%M_%S.tsv"
+
 def scrape_slug(slug):
-    path = f"/data/{slug}"
-    os.makedirs(path, exist_ok=True)
+    base_path = f"/data/{slug}"
+    os.makedirs(base_path, exist_ok=True)
+    if os.listdir(base_path):
+        latest_file = sorted(os.listdir(base_path))[-1]
+        latest_file_time = time.strptime(latest_file, file_time_format)
+        time_diff = time.mktime(time.gmtime()) - time.mktime(latest_file_time)
+        if time_diff < (60 * 60):
+            return pd.read_csv(f"/data/{slug}/{latest_file}", sep="\t")
+
     [items, next_url] = page_items(base_url + f"/p/{slug}/used")
     while next_url:
         [new_items, next_url] = page_items(base_url + next_url)
         items = items + new_items
     data = pd.DataFrame(items)
-    t = time.strftime("%Y-%m-%dT%H_%M_%S")
-    data.to_csv(f"/data/{slug}/{t}.tsv", sep="\t", index=False)
+    t = time.strftime(file_time_format)
+    data.to_csv(f"/data/{slug}/{t}", sep="\t", index=False)
+    return data
 
-# scrape_slug("boss-dd-500-digital-delay")
-# scrape_slug("soundcraft-notepad-12fx-small-format-12-input-mixing-console")
-# scrape_slug("elektron-digitone")
-# scrape_slug("roland-boutique-series-sh-01a")
-
-def slug_best_deals_by_condition(slug):
+def slug_offers(slug):
     path = f"/data/{slug}"
     dfs = [pd.read_csv(path + "/" + fname, sep="\t") for fname in os.listdir(path)]
-    groups = pd.concat(dfs).drop_duplicates(["url", "total_price"]).groupby("condition")
+    return pd.concat(dfs).drop_duplicates(["url", "total_price"])
+
+def slug_best_deals_by_condition(old_offers, new_offers):
+    offers = pd.concat([old_offers, new_offers]).drop_duplicates(["url", "total_price"], keep="last")
+    groups = offers.groupby("condition")
     col = "total_price"
     for condition, group_df in groups:
         df = group_df.copy()
         df["total_price_z_score"] = (df[col] - df[col].mean())/df[col].std(ddof=0)
-        print(condition)
-        pprint.pprint(df.sort_values("total_price_z_score").to_dict("records")[0])
+        deal_records = df[df["for_sale"] == True].sort_values("total_price_z_score").to_dict("records")
+        if deal_records:
+            print(condition)
+            pprint.pprint(deal_records[0])
         print("")
 
 for slug in slugs():
-    print("========================================")
+    print("========================================", flush=True)
     print(slug)
     print("========================================")
-    slug_best_deals_by_condition(slug)
-
-# TODO: HH - The next step is integrating scraping and deal calculation so that
-# we only consider deals from the most recent scrape (if an offer isn't
-# available anymore we still want to use its price to know how good current
-# deals are, but we don't want it to be considered a winner, since it's not
-# available anymore)
+    old_offers = slug_offers(slug)
+    new_offers = scrape_slug(slug)
+    old_offers["for_sale"] = False
+    new_offers["for_sale"] = True
+    if not new_offers.empty:
+        slug_best_deals_by_condition(old_offers, new_offers)
 
 ################################################################################
 ## Other thoughts...
